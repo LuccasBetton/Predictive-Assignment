@@ -1,0 +1,148 @@
+---
+title: "Course project"
+author: "Luccas Betton"
+date: "07/07/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Introduction
+
+The aim of this project is to quantify how well people do some activities. For this analysis, it will be to used data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The report describes how it was built the model, how it was used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. 
+
+# 2. Library and Data Upload
+
+Library
+
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(caret)
+library(rattle)
+library(rpart)
+library(randomForest)
+```
+
+Upload Training Data
+
+```{r}
+filename1 <- "./pml-training.csv"
+
+if(!file.exists(filename1)){
+    fileURL1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+    download.file(fileURL1, destfile = filename1, method = "curl")
+    
+}
+training_rawdata <- read.csv(filename1)
+```
+
+Upload Test Data
+
+```{r}
+filename2 <- "./pml-testing.csv"
+
+if(!file.exists(filename2)){
+    fileURL2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+    download.file(fileURL2, destfile = filename2, method = "curl")
+    
+}
+testing_rawdata <- read.csv(filename2)
+```
+
+# 3. Data Cleaning
+
+In the data will be removed the NA values and zero variance.
+
+```{r}
+#Check total of Columns with less 20% of NA's 
+sum(colSums(is.na(training_rawdata)) < dim(training_rawdata)[1]*0.8)
+
+#Remove columns with more than 80% of NA's
+training_tidy <- training_rawdata[, colSums(is.na(training_rawdata)) < dim(training_rawdata)[1]*0.8]
+
+training_tidy <- training_tidy[,-c(1:7)]
+
+nvz <- nearZeroVar(training_tidy)
+training_tidy <- training_tidy[,-nvz]
+dim(training_tidy)
+```
+
+After removing the NA's and zero variances, the training data will be split into a train and testing data.
+
+```{r}
+set.seed(1543) 
+inTrain <- createDataPartition(training_tidy$classe, p = 0.7, list = FALSE)
+training_final <- training_tidy[inTrain, ]
+testing_final <- training_tidy[-inTrain, ]
+```
+
+# 4. Testing Models
+
+The models that will be used are:
+
+* Decision Trees
+* Random Forest
+* Gradient Boosted Trees
+
+## 4.1 Decision Tree
+
+```{r}
+
+set.seed(1543)
+Mod_DT <- rpart(classe ~ ., data=training_final, method="class")
+fancyRpartPlot(Mod_DT)
+
+Pred_DT <- predict(Mod_DT, testing_final, type = "class")
+cmtree <- confusionMatrix(Pred_DT, testing_final$classe)
+cmtree
+```
+
+
+## 4.2 Random Forest
+
+```{r}
+Con_RF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+Mod_RF <- train(classe ~ ., data=training_final, method="rf", trControl=Con_RF, tuneLength = 5)
+Mod_RF$finalModel
+
+Pred_RF <- predict(Mod_RF, newdata=testing_final)
+cmrf <- confusionMatrix(Pred_RF, testing_final$classe)
+cmrf
+```
+
+## 4.3 Gradient Boosted Trees
+
+```{r}
+Con_GBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+Mod_GBM  <- train(classe ~ ., data=training_final, method = "gbm", trControl = Con_GBM, verbose = FALSE)
+Mod_GBM$finalModel
+
+Pred_GBM <- predict(Mod_GBM, testing_final)
+cmgbm <- confusionMatrix(Pred_GBM, testing_final$classe)
+cmgbm
+
+```
+
+## 4.4 Accuracy Comparison
+
+The accuracy and for each model was:
+
+* Decision Trees - Accuracy `r cmtree$overall[1]` and Sample error rate `r 1 - cmtree$overall[1]`
+* Random Forest - Accuracy `r cmrf$overall[1]` and Sample error rate `r 1 - cmrf$overall[1]`
+* Gradient Boosted Trees `r cmgbm$overall[1]` and Sample error rate `r 1 - cmgbm$overall[1]`
+
+The best model is the Random Forest. This model will be used for the test set.
+
+# 5. Test Data
+
+```{r}
+Pred_TestData <- predict(Mod_RF, testing_rawdata)
+Pred_TestData
+```
+
